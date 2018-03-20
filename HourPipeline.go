@@ -43,14 +43,14 @@ func insertRecords(data []HourHist) {
 	}
 	defer db.Close()
 
-	// Prepare statement for inserting data
+	// Construct prepared statement
 	stmtIns, err := db.Prepare("INSERT INTO `records` (monitor_id, record_epoch, value, updated) VALUES(?,?,?,NOW())") // ? = placeholder
 	if err != nil {
 		panic(err.Error()) // proper error handling instead of panic in your app
 	}
 	defer stmtIns.Close() // Close the statement when we leave main() / the program terminates
 
-	// Insert square numbers for 0-24 in the database
+	// Insert price records into db
 	for i := range data {
 		item := data[i]
 		_, err = stmtIns.Exec(1, item.Time, item.Open) // Insert tuples (i, i^2)
@@ -58,65 +58,53 @@ func insertRecords(data []HourHist) {
 			panic(err.Error()) // proper error handling instead of panic in your app
 		}
 	}
-
-	// 	fmt.Println(cryptoResponse.Data[i].Time + '\n')  // This prints '0', two times 
-	// }
 }
 
-func main() {
-	// phone := "14158586273"
-	// QueryEscape escapes the phone string so
-	// it can be safely placed inside a URL query
-	// safePhone := url.QueryEscape(phone)
-
-	url := fmt.Sprintf(base_hour_hist_url + "?fsym=%s&tsym=%s&limit=%d", "BTC", "USD", 60)
-	fmt.Println(url)
+func httpGet(url string) (CryptoResponse, error) {
+	var cryptoResponse CryptoResponse
 
 	// Build the request
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		log.Fatal("NewRequest: ", err)
-		return
+		return cryptoResponse, err
 	}
 
-	// For control over HTTP client headers,
-	// redirect policy, and other settings,
-	// create a Client
-	// A Client is an HTTP client
+	// Construct client
 	client := &http.Client{}
 
-	// Send the request via a client
-	// Do sends an HTTP request and
-	// returns an HTTP response
+	// Send the request
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Fatal("Do: ", err)
-		return
+		return cryptoResponse, err
 	}
 
-	// Callers should close resp.Body
-	// when done reading from it
 	// Defer the closing of the body
 	defer resp.Body.Close()
 
-	// Use json.Decode for reading streams of JSON data
-	var cryptoResponse CryptoResponse
+	// Read data into json format
 	if err := json.NewDecoder(resp.Body).Decode(&cryptoResponse); err != nil {
 		log.Println(err)
 	}
 
-	fmt.Println(cryptoResponse.Data[0].Time)
+	return cryptoResponse, nil
+}
+
+func cryptoPipeline(fsym string, tsym string, limit int) {
+	// Format url
+	url := fmt.Sprintf(base_hour_hist_url + "?fsym=%s&tsym=%s&limit=%d", fsym, tsym, limit)
+	var cryptoResponse CryptoResponse
+
+	// Fetch data
+	cryptoResponse, err := httpGet(url)
+	if err != nil {
+		log.Fatal("Failed http get request: ", err)
+	}
+
+	// Process response
 	insertRecords(cryptoResponse.Data)
+}
 
-	// for i := range cryptoResponse.Data {
-	// 	fmt.Println(cryptoResponse.Data[i].Time + '\n')  // This prints '0', two times 
-	// }
 
-	// fmt.Println(cryptoResponse)
-	// fmt.Println("Data = ", cryptoResponse.Data)
-	// fmt.Println("Country   = ", record.CountryName)
-	// fmt.Println("Location  = ", record.Location)
-	// fmt.Println("Carrier   = ", record.Carrier)
-	// fmt.Println("LineType  = ", record.LineType)
-
+func main() {
+	cryptoPipeline("BTC", "USD", 60)
 }
